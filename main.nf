@@ -1757,8 +1757,7 @@ if(mate=="pair"){
 	R1 = readArray[0]
 }
 
-if(act=="none")
-act_arg = (act=="none") ? "" : "--act ${act}" 
+act_arg=(act=="none")? "" : "--act ${act}" 
 
 if(method=="collapse" || method=="add" || method=="copy" || method=="rename" || method=="merge"){
 	out="_reheader.fastq"
@@ -1806,8 +1805,7 @@ if(mate=="pair"){
 	R1 = readArray[0]
 }
 
-if(act=="none")
-act_arg = (act=="none") ? "" : "--act ${act}" 
+act_arg=(act=="none")? "" : "--act ${act}" 
 
 if(method=="collapse" || method=="add" || method=="copy" || method=="rename" || method=="merge"){
 	out="_reheader.fastq"
