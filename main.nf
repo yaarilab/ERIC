@@ -1565,7 +1565,7 @@ input:
  set val(name),file(reads) from g21_16_reads0_g_83
 
 output:
- set val(name), file("*_atleast-*.fast*")  into g_83_fastaFile0_g_80
+ set val(name), file("*_atleast-*.fast*")  into g_83_fastaFile0_g_88
  set val(name),file("out*") optional true  into g_83_logFile1_g72_0
 
 script:
@@ -1590,21 +1590,25 @@ SplitSeq.py group -s ${readArray} -f ${field} ${num} ${fasta} >> out_${readArray
 }
 
 
-process vdjbase_input {
+process split_constant {
 
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /${chain}$/) "reads/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /light$/) "reads/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /heavy$/) "reads/$filename"}
 input:
- set val(name),file(reads) from g_83_fastaFile0_g_80
+ set val(name),file(reads) from g_83_fastaFile0_g_88
 
 output:
- file "${chain}"  into g_80_germlineDb00
+ file "light" optional true  into g_88_germlineDb00
+ file "heavy" optional true  into g_88_germlineDb11
 
 script:
-chain = params.vdjbase_input.chain
-
+pf = params.split_constant.pf
+	
 """
-mkdir ${chain}
-mv ${reads} ${chain}
+#!/bin/sh 
+mkdir heavy
+mkdir light
+awk '/^>/{f=""; split(\$0,b,"${pf}="); if(substr(b[2],1,3)=="IGK" || substr(b[2],1,3)=="IGL"){f="light/${name}.fasta"} else {f="heavy/${name}.fasta"}; print \$0 > f ; next } {print \$0 > f} ' ${reads}
 """
 
 }
