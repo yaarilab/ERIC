@@ -18,7 +18,7 @@ Channel
  }
 
 Channel.value(params.mate).into{g_11_mate_g_82;g_11_mate_g1_0;g_11_mate_g1_5;g_11_mate_g1_7;g_11_mate_g9_11;g_11_mate_g9_9;g_11_mate_g9_12;g_11_mate_g13_10;g_11_mate_g13_12;g_11_mate_g13_14;g_11_mate_g12_15;g_11_mate_g12_19;g_11_mate_g12_12;g_11_mate_g84_0;g_11_mate_g84_1;g_11_mate_g84_8;g_11_mate_g53_9;g_11_mate_g15_9}
-Channel.value(params.mate2).into{g_54_mate_g21_16;g_54_mate_g20_15;g_54_mate_g85_15;g_54_mate_g86_0;g_54_mate_g86_5;g_54_mate_g86_7}
+Channel.value(params.mate2).into{g_54_mate_g_87;g_54_mate_g21_16;g_54_mate_g20_15;g_54_mate_g85_15}
 
 
 process unizp {
@@ -1229,7 +1229,7 @@ input:
  val mate from g_11_mate_g12_12
 
 output:
- set val(name),file("*_assemble-pass.f*")  into g12_12_reads0_g86_0
+ set val(name),file("*_assemble-pass.f*")  into g12_12_reads0_g_87
  set val(name),file("AP_*")  into g12_12_logFile1_g12_15
  set val(name),file("*_assemble-fail.f*") optional true  into g12_12_reads_failed22
  set val(name),file("out*")  into g12_12_logFile33
@@ -1344,371 +1344,51 @@ if(mate=="pair"){
 }
 
 
-process Assemble_pairs_parse_log_AP {
+process Filter_Sequence_Mask {
 
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*table.tab$/) "AP_log_table/$filename"}
 input:
- set val(name),file(log_file) from g12_12_logFile1_g12_15
- val mate from g_11_mate_g12_15
+ set val(name),file(reads) from g12_12_reads0_g_87
+ val mate from g_54_mate_g_87
 
 output:
- file "*table.tab"  into g12_15_logFile0_g12_25, g12_15_logFile0_g12_19
+ set val(name), file("*_${method}-pass.fast*")  into g_87_reads0_g20_15
+ set val(name), file("FS_*")  into g_87_logFile11
+ set val(name), file("*_${method}-fail.fast*") optional true  into g_87_reads22
+ set val(name),file("out*") optional true  into g_87_logFile33
 
 script:
-field_to_parse = params.Assemble_pairs_parse_log_AP.field_to_parse
-readArray = log_file.toString()	
-
-"""
-ParseLog.py -l ${readArray}  -f ${field_to_parse}
-"""
-
-
-}
-
-
-process Assemble_pairs_report_assemble_pairs {
-
-input:
- file log_files from g12_15_logFile0_g12_19
- val matee from g_11_mate_g12_19
-
-output:
- file "*.rmd"  into g12_19_rMarkdown0_g12_25
-
-
-
-shell:
-
-if(matee=="pair"){
-	readArray = log_files.toString().split(' ')
-	assemble = readArray[0]
-	name = assemble-"_table.tab"
-	'''
-	#!/usr/bin/env perl
-	
-	
-	my $script = <<'EOF';
-	
-	```{r, message=FALSE, echo=FALSE, results="hide"}
-	# Setup
-	library(prestor)
-	library(knitr)
-	library(captioner)
-	
-	if (!exists("tables")) { tables <- captioner(prefix="Table") }
-	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
-	figures("assemble_length", "Histogram showing the distribution assembled sequence lengths in 
-	                            nucleotides for the Align step (top) and Reference step (bottom).")
-	figures("assemble_overlap", "Histogram showing the distribution of overlapping nucleotides between 
-	                             mate-pairs for the Align step (top) and Reference step (bottom).
-	                             Negative values for overlap indicate non-overlapping mate-pairs
-	                             with the negative value being the number of gap characters between
-	                             the ends of the two mate-pairs.")
-	figures("assemble_error", "Histograms showing the distribution of paired-end assembly error 
-	                           rates for the Align step (top) and identity to the reference germline 
-	                           for the Reference step (bottom).")
-	figures("assemble_pvalue", "Histograms showing the distribution of significance scores for 
-	                            paired-end assemblies. P-values for the Align mode are shown in the top
-	                            panel. E-values from the Reference step's alignment against the 
-	                            germline sequences are shown in the bottom panel for both input files
-	                            separately.")
-	```
-	
-	```{r, echo=FALSE, warning=FALSE}
-	assemble_log <- loadLogTable(file.path(".", "!{assemble}"))
-	
-	# Subset to align and reference logs
-	align_fields <- c("ERROR", "PVALUE")
-	ref_fields <- c("REFID", "GAP", "EVALUE1", "EVALUE2", "IDENTITY")
-	align_log <- assemble_log[!is.na(assemble_log$ERROR), !(names(assemble_log) %in% ref_fields)]
-	ref_log <- assemble_log[!is.na(assemble_log$REFID), !(names(assemble_log) %in% align_fields)]
-	
-	# Build log set
-	assemble_list <- list()
-	if (nrow(align_log) > 0) { assemble_list[["Align"]] <- align_log }
-	if (nrow(ref_log) > 0) { assemble_list[["Reference"]] <- ref_log }
-	plot_titles <- names(assemble_list)
-	```
-	
-	# Paired-End Assembly
-	
-	Assembly of paired-end reads is performed using the AssemblePairs tool which 
-	determines the read overlap in two steps. First, de novo assembly is attempted 
-	using an exhaustive approach to identify all possible overlaps between the 
-	two reads with alignment error rates and p-values below user-defined thresholds. 
-	This method is denoted as the `Align` method in the following figures. 
-	Second, those reads failing the first stage of de novo assembly are then 
-	mapped to the V-region reference sequences to create a full length sequence, 
-	padding with Ns, for any amplicons that have insufficient overlap for 
-	de novo assembly. This second stage is referred to as the `Reference` step in the
-	figures below.
-	
-	## Assembled sequence lengths
-	
-	```{r, echo=FALSE, warning=FALSE}
-	plot_params <- list(titles=plot_titles, style="length", sizing="figure")
-	do.call(plotAssemblePairs, c(assemble_list, plot_params))
-	```
-	
-	`r figures("assemble_length")`
-	
-	```{r, echo=FALSE, warning=FALSE}
-	plot_params <- list(titles=plot_titles, style="overlap", sizing="figure")
-	do.call(plotAssemblePairs, c(assemble_list, plot_params))
-	```
-	
-	`r figures("assemble_overlap")`
-	
-	## Alignment error rates and significance
-	
-	```{r, echo=FALSE, warning=FALSE}
-	plot_params <- list(titles=plot_titles, style="error", sizing="figure")
-	do.call(plotAssemblePairs, c(assemble_list, plot_params))
-	```
-	
-	`r figures("assemble_error")`
-	
-	```{r, echo=FALSE, warning=FALSE}
-	plot_params <- list(titles=plot_titles, style="pvalue", sizing="figure")
-	do.call(plotAssemblePairs, c(assemble_list, plot_params))
-	```
-
-	`r figures("assemble_pvalue")`
-
-	EOF
-	
-	open OUT, ">AP_!{name}.rmd";
-	print OUT $script;
-	close OUT;
-	
-	'''
-
-}else{
-	
-	"""
-	echo -e 'AssemblePairs works only on pair-end reads.'
-	"""
-}
-}
-
-
-process Assemble_pairs_presto_render_rmarkdown {
-
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.html$/) "AP_report/$filename"}
-input:
- file rmk from g12_19_rMarkdown0_g12_25
- file log_file from g12_15_logFile0_g12_25
-
-output:
- file "*.html" optional true  into g12_25_outputFileHTML00
- file "*csv" optional true  into g12_25_csvFile11
-
-"""
-
-#!/usr/bin/env Rscript 
-
-rmarkdown::render("${rmk}", clean=TRUE, output_format="html_document", output_dir=".")
-
-"""
-}
-
-
-process Align_Sets_parse_log_AS {
-
-input:
- set val(name), file(log_file) from g84_0_logFile1_g84_1
- val mate from g_11_mate_g84_1
-
-output:
- file "*table.tab"  into g84_1_logFile0_g84_8, g84_1_logFile0_g84_13
-
-script:
-field_to_parse = params.Align_Sets_parse_log_AS.field_to_parse
-readArray = log_file.toString()	
-
-"""
-ParseLog.py -l ${readArray}  -f ${field_to_parse}
-"""
-
-}
-
-
-process Align_Sets_report_Align_Sets {
-
-input:
- val matee from g_11_mate_g84_8
- file log_files from g84_1_logFile0_g84_8
-
-output:
- file "*.rmd"  into g84_8_rMarkdown0_g84_13
-
-
-shell:
-
-if(matee=="pair"){
-	readArray = log_files.toString().split(' ')	
-	R1 = readArray[0]
-	R2 = readArray[1]
-	name = R1 - "_table.tab"
-	'''
-	#!/usr/bin/env perl
-	
-	
-	my $script = <<'EOF';
-	
-	
-	```{R, message=FALSE, echo=FALSE, results="hide"}
-	# Setup
-	library(prestor)
-	library(knitr)
-	library(captioner)
-	
-	plot_titles <- plot_titles<- c("Read 1", "Read 2")
-	if (!exists("tables")) { tables <- captioner(prefix="Table") }
-	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
-	figures("align_size", 
-	        paste("Histogram of UMI read group sizes (reads per UMI) for", plot_titles[1], "(top) and", plot_titles[2],
-	        "(bottom). The x-axis indicates the number of reads in a UMI group and the y-axis is the 
-	        number of UMI groups with that size."))
-	
-	```
-	
-	```{r, echo=FALSE}
-	align_log_1 <- loadLogTable(file.path(".", "!{R1}"))
-	align_log_2 <- loadLogTable(file.path(".", "!{R2}"))
-	```
-	
-	# Multiple Alignment of UMI Read Groups
-	
-	Reads sharing the same UMI are multiple aligned using the muscle wrapper in the 
-	AlignSets tool.
-	
-	## Reads per UMI
-	
-	```{r, echo=FALSE}
-	plotAlignSets(align_log_1, align_log_2, style="size", sizing="figure")
-	```
-	
-	`r figures("align_size")`
-
-	
-	EOF
-	
-	open OUT, ">!{name}.rmd";
-	print OUT $script;
-	close OUT;
-	
-	'''
-
-}else{
-	
-	readArray = log_files.toString().split(' ')
-	R1 = readArray[0]
-	name = R1 - "_table.tab"
-	'''
-	#!/usr/bin/env perl
-	
-	
-	my $script = <<'EOF';
-	
-	
-	```{R, message=FALSE, echo=FALSE, results="hide"}
-	# Setup
-	library(prestor)
-	library(knitr)
-	library(captioner)
-	
-	if (!exists("tables")) { tables <- captioner(prefix="Table") }
-	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
-	figures("align_size", 
-	        "Histogram of UMI read group sizes (reads per UMI). 
-	        The x-axis indicates the number of reads in a UMI group and the y-axis is the 
-	        number of UMI groups with that size.")
-	```
-	
-	```{r, echo=FALSE}
-	align_log <- loadLogTable(file.path(".","!{R1}"))
-	```
-	
-	# Multiple Alignment of UMI Read Groups
-	
-	Reads sharing the same UMI are multiple aligned using the muscle wrapper in the 
-	AlignSets tool.
-	
-	## Reads per UMI
-	
-	```{r, echo=FALSE}
-	plotAlignSets(align_log, style="size", sizing="figure")
-	```
-	
-	`r figures("align_size")`
-	
-	EOF
-	
-	open OUT, ">!{name}.rmd";
-	print OUT $script;
-	close OUT;
-	
-	'''
-}
-
-}
-
-
-process Align_Sets_presto_render_rmarkdown {
-
-input:
- file rmk from g84_8_rMarkdown0_g84_13
- file log_file from g84_1_logFile0_g84_13
-
-output:
- file "*.html" optional true  into g84_13_outputFileHTML00
- file "*csv" optional true  into g84_13_csvFile11
-
-"""
-
-#!/usr/bin/env Rscript 
-
-rmarkdown::render("${rmk}", clean=TRUE, output_format="html_document", output_dir=".")
-
-"""
-}
-
-
-process Filter_Sequence_Mask_filter_seq_quality {
-
-input:
- set val(name),file(reads) from g12_12_reads0_g86_0
- val mate from g_54_mate_g86_0
-
-output:
- set val(name), file("*_${method}-pass.fast*")  into g86_0_reads0_g20_15
- set val(name), file("FS_*")  into g86_0_logFile1_g86_5
- set val(name), file("*_${method}-fail.fast*") optional true  into g86_0_reads22
- set val(name),file("out*") optional true  into g86_0_logFile33
-
-script:
-method = params.Filter_Sequence_Mask_filter_seq_quality.method
-nproc = params.Filter_Sequence_Mask_filter_seq_quality.nproc
-q = params.Filter_Sequence_Mask_filter_seq_quality.q
-n_length = params.Filter_Sequence_Mask_filter_seq_quality.n_length
-n_missing = params.Filter_Sequence_Mask_filter_seq_quality.n_missing
-fasta = params.Filter_Sequence_Mask_filter_seq_quality.fasta
+method = params.Filter_Sequence_Mask.method
+nproc = params.Filter_Sequence_Mask.nproc
+q = params.Filter_Sequence_Mask.q
+n_length = params.Filter_Sequence_Mask.n_length
+n_missing = params.Filter_Sequence_Mask.n_missing
+window = params.Filter_Sequence_Mask.window
+fasta = params.Filter_Sequence_Mask.fasta
 //* @style @condition:{method="quality",q}, {method="length",n_length}, {method="missing",n_missing} @multicolumn:{method,nproc}
 
 if(method=="missing"){
 	q = ""
 	n_length = ""
+	window = ""
 	n_missing = "-n ${n_missing}"
 }else{
 	if(method=="length"){
 		q = ""
 		n_length = "-n ${n_length}"
 		n_missing = ""
+		window = ""
 	}else{
-		q = "-q ${q}"
-		n_length = ""
-		n_missing = ""
+		if(method=="length"){
+			q = "-q ${q}"
+			window = "--win ${window}"
+			n_length = ""
+			n_missing = ""
+		}else{
+			q = "-q ${q}"
+			n_length = ""
+			n_missing = ""
+			window = ""
+		}
 	}
 }
 
@@ -1720,13 +1400,13 @@ if(mate=="pair"){
 	R1 = readArray[0]
 	R2 = readArray[1]
 	"""
-	FilterSeq.py ${method} -s $R1 ${q} ${n_length} ${n_missing} --nproc ${nproc} --log FS_R1_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
-	FilterSeq.py ${method} -s $R2 ${q} ${n_length} ${n_missing} --nproc ${nproc} --log FS_R2_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
+	FilterSeq.py ${method} -s $R1 ${q} ${n_length} ${n_missing} ${window} --nproc ${nproc} --log FS_R1_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
+	FilterSeq.py ${method} -s $R2 ${q} ${n_length} ${n_missing} ${window} --nproc ${nproc} --log FS_R2_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
 	"""
 }else{
 	R1 = readArray[0]
 	"""
-	FilterSeq.py ${method} -s $R1 ${q} ${n_length} ${n_missing} --nproc ${nproc} --log FS_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
+	FilterSeq.py ${method} -s $R1 ${q} ${n_length} ${n_missing} ${window} --nproc ${nproc} --log FS_${name}.log --failed ${fasta} 2>&1 | tee -a out_${R1}_FS.log
 	"""
 }
 
@@ -1737,7 +1417,7 @@ if(mate=="pair"){
 process Parse_header_parse_headers {
 
 input:
- set val(name), file(reads) from g86_0_reads0_g20_15
+ set val(name), file(reads) from g_87_reads0_g20_15
  val mate from g_54_mate_g20_15
 
 output:
@@ -1930,6 +1610,175 @@ mv ${reads} ${chain}
 }
 
 
+process Assemble_pairs_parse_log_AP {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*table.tab$/) "AP_log_table/$filename"}
+input:
+ set val(name),file(log_file) from g12_12_logFile1_g12_15
+ val mate from g_11_mate_g12_15
+
+output:
+ file "*table.tab"  into g12_15_logFile0_g12_25, g12_15_logFile0_g12_19
+
+script:
+field_to_parse = params.Assemble_pairs_parse_log_AP.field_to_parse
+readArray = log_file.toString()	
+
+"""
+ParseLog.py -l ${readArray}  -f ${field_to_parse}
+"""
+
+
+}
+
+
+process Assemble_pairs_report_assemble_pairs {
+
+input:
+ file log_files from g12_15_logFile0_g12_19
+ val matee from g_11_mate_g12_19
+
+output:
+ file "*.rmd"  into g12_19_rMarkdown0_g12_25
+
+
+
+shell:
+
+if(matee=="pair"){
+	readArray = log_files.toString().split(' ')
+	assemble = readArray[0]
+	name = assemble-"_table.tab"
+	'''
+	#!/usr/bin/env perl
+	
+	
+	my $script = <<'EOF';
+	
+	```{r, message=FALSE, echo=FALSE, results="hide"}
+	# Setup
+	library(prestor)
+	library(knitr)
+	library(captioner)
+	
+	if (!exists("tables")) { tables <- captioner(prefix="Table") }
+	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
+	figures("assemble_length", "Histogram showing the distribution assembled sequence lengths in 
+	                            nucleotides for the Align step (top) and Reference step (bottom).")
+	figures("assemble_overlap", "Histogram showing the distribution of overlapping nucleotides between 
+	                             mate-pairs for the Align step (top) and Reference step (bottom).
+	                             Negative values for overlap indicate non-overlapping mate-pairs
+	                             with the negative value being the number of gap characters between
+	                             the ends of the two mate-pairs.")
+	figures("assemble_error", "Histograms showing the distribution of paired-end assembly error 
+	                           rates for the Align step (top) and identity to the reference germline 
+	                           for the Reference step (bottom).")
+	figures("assemble_pvalue", "Histograms showing the distribution of significance scores for 
+	                            paired-end assemblies. P-values for the Align mode are shown in the top
+	                            panel. E-values from the Reference step's alignment against the 
+	                            germline sequences are shown in the bottom panel for both input files
+	                            separately.")
+	```
+	
+	```{r, echo=FALSE, warning=FALSE}
+	assemble_log <- loadLogTable(file.path(".", "!{assemble}"))
+	
+	# Subset to align and reference logs
+	align_fields <- c("ERROR", "PVALUE")
+	ref_fields <- c("REFID", "GAP", "EVALUE1", "EVALUE2", "IDENTITY")
+	align_log <- assemble_log[!is.na(assemble_log$ERROR), !(names(assemble_log) %in% ref_fields)]
+	ref_log <- assemble_log[!is.na(assemble_log$REFID), !(names(assemble_log) %in% align_fields)]
+	
+	# Build log set
+	assemble_list <- list()
+	if (nrow(align_log) > 0) { assemble_list[["Align"]] <- align_log }
+	if (nrow(ref_log) > 0) { assemble_list[["Reference"]] <- ref_log }
+	plot_titles <- names(assemble_list)
+	```
+	
+	# Paired-End Assembly
+	
+	Assembly of paired-end reads is performed using the AssemblePairs tool which 
+	determines the read overlap in two steps. First, de novo assembly is attempted 
+	using an exhaustive approach to identify all possible overlaps between the 
+	two reads with alignment error rates and p-values below user-defined thresholds. 
+	This method is denoted as the `Align` method in the following figures. 
+	Second, those reads failing the first stage of de novo assembly are then 
+	mapped to the V-region reference sequences to create a full length sequence, 
+	padding with Ns, for any amplicons that have insufficient overlap for 
+	de novo assembly. This second stage is referred to as the `Reference` step in the
+	figures below.
+	
+	## Assembled sequence lengths
+	
+	```{r, echo=FALSE, warning=FALSE}
+	plot_params <- list(titles=plot_titles, style="length", sizing="figure")
+	do.call(plotAssemblePairs, c(assemble_list, plot_params))
+	```
+	
+	`r figures("assemble_length")`
+	
+	```{r, echo=FALSE, warning=FALSE}
+	plot_params <- list(titles=plot_titles, style="overlap", sizing="figure")
+	do.call(plotAssemblePairs, c(assemble_list, plot_params))
+	```
+	
+	`r figures("assemble_overlap")`
+	
+	## Alignment error rates and significance
+	
+	```{r, echo=FALSE, warning=FALSE}
+	plot_params <- list(titles=plot_titles, style="error", sizing="figure")
+	do.call(plotAssemblePairs, c(assemble_list, plot_params))
+	```
+	
+	`r figures("assemble_error")`
+	
+	```{r, echo=FALSE, warning=FALSE}
+	plot_params <- list(titles=plot_titles, style="pvalue", sizing="figure")
+	do.call(plotAssemblePairs, c(assemble_list, plot_params))
+	```
+
+	`r figures("assemble_pvalue")`
+
+	EOF
+	
+	open OUT, ">AP_!{name}.rmd";
+	print OUT $script;
+	close OUT;
+	
+	'''
+
+}else{
+	
+	"""
+	echo -e 'AssemblePairs works only on pair-end reads.'
+	"""
+}
+}
+
+
+process Assemble_pairs_presto_render_rmarkdown {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.html$/) "AP_report/$filename"}
+input:
+ file rmk from g12_19_rMarkdown0_g12_25
+ file log_file from g12_15_logFile0_g12_25
+
+output:
+ file "*.html" optional true  into g12_25_outputFileHTML00
+ file "*csv" optional true  into g12_25_csvFile11
+
+"""
+
+#!/usr/bin/env Rscript 
+
+rmarkdown::render("${rmk}", clean=TRUE, output_format="html_document", output_dir=".")
+
+"""
+}
+
+
 process make_report_pipeline_cat_all_file {
 
 input:
@@ -2051,42 +1900,42 @@ rmarkdown::render("${rmk}", clean=TRUE, output_format="html_document", output_di
 }
 
 
-process Filter_Sequence_Mask_parse_log_FS {
+process Align_Sets_parse_log_AS {
 
 input:
- set val(name), file(log_file) from g86_0_logFile1_g86_5
- val mate from g_54_mate_g86_5
+ set val(name), file(log_file) from g84_0_logFile1_g84_1
+ val mate from g_11_mate_g84_1
 
 output:
- file "*table.tab"  into g86_5_logFile0_g86_7, g86_5_logFile0_g86_16
+ file "*table.tab"  into g84_1_logFile0_g84_8, g84_1_logFile0_g84_13
 
 script:
-readArray = log_file.toString()
+field_to_parse = params.Align_Sets_parse_log_AS.field_to_parse
+readArray = log_file.toString()	
 
 """
-ParseLog.py -l ${readArray}  -f ID QUALITY
+ParseLog.py -l ${readArray}  -f ${field_to_parse}
 """
 
 }
 
 
-process Filter_Sequence_Mask_report_filter_Seq_Quality {
+process Align_Sets_report_Align_Sets {
 
 input:
- val mate from g_54_mate_g86_7
- file log_files from g86_5_logFile0_g86_7
+ val matee from g_11_mate_g84_8
+ file log_files from g84_1_logFile0_g84_8
 
 output:
- file "*.rmd"  into g86_7_rMarkdown0_g86_16
+ file "*.rmd"  into g84_8_rMarkdown0_g84_13
 
 
 shell:
 
-if(mate=="pair"){
+if(matee=="pair"){
 	readArray = log_files.toString().split(' ')	
 	R1 = readArray[0]
 	R2 = readArray[1]
-
 	name = R1 - "_table.tab"
 	'''
 	#!/usr/bin/env perl
@@ -2095,53 +1944,51 @@ if(mate=="pair"){
 	my $script = <<'EOF';
 	
 	
-	
 	```{R, message=FALSE, echo=FALSE, results="hide"}
 	# Setup
 	library(prestor)
 	library(knitr)
 	library(captioner)
 	
-	plot_titles <- c("Read 1", "Read 2")
+	plot_titles <- plot_titles<- c("Read 1", "Read 2")
 	if (!exists("tables")) { tables <- captioner(prefix="Table") }
 	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
-	figures("quality", 
-	        paste("Mean Phred quality scores for",  plot_titles[1], "(top) and", plot_titles[2], "(bottom).",
-	              "The dotted line indicates the average quality score under which reads were removed."))
+	figures("align_size", 
+	        paste("Histogram of UMI read group sizes (reads per UMI) for", plot_titles[1], "(top) and", plot_titles[2],
+	        "(bottom). The x-axis indicates the number of reads in a UMI group and the y-axis is the 
+	        number of UMI groups with that size."))
+	
 	```
 	
 	```{r, echo=FALSE}
-	quality_log_1 <- loadLogTable(file.path(".", "!{R1}"))
-	quality_log_2 <- loadLogTable(file.path(".", "!{R2}"))
+	align_log_1 <- loadLogTable(file.path(".", "!{R1}"))
+	align_log_2 <- loadLogTable(file.path(".", "!{R2}"))
 	```
 	
-	# Quality Scores
+	# Multiple Alignment of UMI Read Groups
 	
-	Quality filtering is an essential step in most sequencing workflows. pRESTO’s
-	FilterSeq tool remove reads with low mean Phred quality scores. 
-	Phred quality scores are assigned to each nucleotide base call in automated 
-	sequencer traces. The quality score (`Q`) of a base call is logarithmically 
-	related to the probability that a base call is incorrect (`P`): 
-	$Q = -10 log_{10} P$. For example, a base call with `Q=30` is incorrectly 
-	assigned 1 in 1000 times. The most commonly used approach is to remove read 
-	with average `Q` below 20.
+	Reads sharing the same UMI are multiple aligned using the muscle wrapper in the 
+	AlignSets tool.
+	
+	## Reads per UMI
 	
 	```{r, echo=FALSE}
-	plotFilterSeq(quality_log_1, quality_log_2, titles=plot_titles, sizing="figure")
+	plotAlignSets(align_log_1, align_log_2, style="size", sizing="figure")
 	```
 	
-	`r figures("quality")`
-		
+	`r figures("align_size")`
+
+	
 	EOF
 	
-	open OUT, ">FSQ_!{name}.rmd";
+	open OUT, ">!{name}.rmd";
 	print OUT $script;
 	close OUT;
 	
 	'''
 
 }else{
-
+	
 	readArray = log_files.toString().split(' ')
 	R1 = readArray[0]
 	name = R1 - "_table.tab"
@@ -2158,55 +2005,52 @@ if(mate=="pair"){
 	library(knitr)
 	library(captioner)
 	
-	plot_titles <- c("Read")#params$quality_titles
 	if (!exists("tables")) { tables <- captioner(prefix="Table") }
 	if (!exists("figures")) { figures <- captioner(prefix="Figure") }
-	figures("quality", 
-	        paste("Mean Phred quality scores for",  plot_titles[1],
-	              "The dotted line indicates the average quality score under which reads were removed."))
+	figures("align_size", 
+	        "Histogram of UMI read group sizes (reads per UMI). 
+	        The x-axis indicates the number of reads in a UMI group and the y-axis is the 
+	        number of UMI groups with that size.")
 	```
 	
 	```{r, echo=FALSE}
-	quality_log_1 <- loadLogTable(file.path(".", "!{R1}"))
+	align_log <- loadLogTable(file.path(".","!{R1}"))
 	```
 	
-	# Quality Scores
+	# Multiple Alignment of UMI Read Groups
 	
-	Quality filtering is an essential step in most sequencing workflows. pRESTO’s
-	FilterSeq tool remove reads with low mean Phred quality scores. 
-	Phred quality scores are assigned to each nucleotide base call in automated 
-	sequencer traces. The quality score (`Q`) of a base call is logarithmically 
-	related to the probability that a base call is incorrect (`P`): 
-	$Q = -10 log_{10} P$. For example, a base call with `Q=30` is incorrectly 
-	assigned 1 in 1000 times. The most commonly used approach is to remove read 
-	with average `Q` below 20.
+	Reads sharing the same UMI are multiple aligned using the muscle wrapper in the 
+	AlignSets tool.
+	
+	## Reads per UMI
 	
 	```{r, echo=FALSE}
-	plotFilterSeq(quality_log_1, titles=plot_titles[1], sizing="figure")
+	plotAlignSets(align_log, style="size", sizing="figure")
 	```
 	
-	`r figures("quality")`
+	`r figures("align_size")`
 	
 	EOF
 	
-	open OUT, ">FSQ_!{name}.rmd";
+	open OUT, ">!{name}.rmd";
 	print OUT $script;
 	close OUT;
 	
 	'''
 }
+
 }
 
 
-process Filter_Sequence_Mask_presto_render_rmarkdown {
+process Align_Sets_presto_render_rmarkdown {
 
 input:
- file rmk from g86_7_rMarkdown0_g86_16
- file log_file from g86_5_logFile0_g86_16
+ file rmk from g84_8_rMarkdown0_g84_13
+ file log_file from g84_1_logFile0_g84_13
 
 output:
- file "*.html" optional true  into g86_16_outputFileHTML00
- file "*csv" optional true  into g86_16_csvFile11
+ file "*.html" optional true  into g84_13_outputFileHTML00
+ file "*csv" optional true  into g84_13_csvFile11
 
 """
 
