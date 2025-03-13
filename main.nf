@@ -17,7 +17,7 @@ Channel
 	g_4_reads_g_82 = Channel.empty()
  }
 
-Channel.value(params.mate).into{g_11_mate_g_82;g_11_mate_g1_0;g_11_mate_g1_5;g_11_mate_g1_7;g_11_mate_g9_11;g_11_mate_g9_9;g_11_mate_g9_12;g_11_mate_g12_15;g_11_mate_g12_19;g_11_mate_g12_12;g_11_mate_g53_9;g_11_mate_g15_9;g_11_mate_g91_10;g_11_mate_g91_12;g_11_mate_g91_14}
+Channel.value(params.mate).into{g_11_mate_g_82;g_11_mate_g_92;g_11_mate_g1_0;g_11_mate_g1_5;g_11_mate_g1_7;g_11_mate_g9_9;g_11_mate_g9_12;g_11_mate_g9_11;g_11_mate_g12_15;g_11_mate_g12_19;g_11_mate_g12_12;g_11_mate_g53_9;g_11_mate_g15_9;g_11_mate_g91_10;g_11_mate_g91_12;g_11_mate_g91_14}
 Channel.value(params.mate2).into{g_54_mate_g_87;g_54_mate_g21_16;g_54_mate_g20_15;g_54_mate_g85_15}
 
 
@@ -28,7 +28,7 @@ input:
  val mate from g_11_mate_g_82
 
 output:
- set val(name),file("*.fastq")  into g_82_reads0_g1_0
+ set val(name),file("*.fastq")  into g_82_reads0_g_92, g_82_reads0_g1_0
 
 script:
 
@@ -71,6 +71,42 @@ if(mate=="pair"){
 	esac
 	"""
 }
+}
+
+//* params.run_FastQC =  "no"  //* @dropdown @options:"yes","no"
+if (params.run_FastQC == "no") { println "INFO: FastQC will be skipped"}
+
+
+process FastQC {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.(html|zip)$/) "FastQC/$filename"}
+input:
+ set val(name), file(reads) from g_82_reads0_g_92
+ val mate from g_11_mate_g_92
+
+output:
+ file '*.{html,zip}'  into g_92_FastQCout00
+
+errorStrategy 'retry'
+maxRetries 5
+
+script:
+nameAll = reads.toString()
+if (nameAll.contains('.gz')) {
+    file =  nameAll - '.gz' - '.gz'
+    runGzip = "ls *.gz | xargs -i echo gzip -df {} | sh"
+} else {
+    file =  nameAll 
+    runGzip = ''
+}
+"""
+if [ "${params.run_FastQC}" == "yes" ]; then
+    ${runGzip}
+    fastqc ${file} 
+else
+    touch process.skiped.html
+fi
+"""
 }
 
 
@@ -312,7 +348,7 @@ output:
  set val(name), file("*_primers-pass.fast*") optional true  into g9_11_reads0_g53_9
  set val(name), file("*_primers-fail.fast*") optional true  into g9_11_reads_failed11
  set val(name), file("MP_*")  into g9_11_logFile2_g9_9
- set val(name),file("out*")  into g9_11_logFile3_g72_0
+ set val(name),file("out*")  into g9_11_logFile33
 
 script:
 method = params.Mask_Primer_1_MaskPrimers.method
@@ -396,8 +432,8 @@ if(mate=="pair"){
 	
 	"""
 	
-	MaskPrimers.py ${args_1} -s ${R1} ${R1_primers} --log MP_R1_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${R1}_MP.log & \
-	MaskPrimers.py ${args_2} -s ${R2} ${R2_primers} --log MP_R2_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${R1}_MP.log & \
+	MaskPrimers.py ${args_1} -s ${R1} ${R1_primers} --log MP_R1_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${name}_MP.log & \
+	MaskPrimers.py ${args_2} -s ${R2} ${R2_primers} --log MP_R2_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${name}_MP.log & \
 	wait
 	"""
 }else{
@@ -410,7 +446,7 @@ if(mate=="pair"){
 	"""
 	echo -e "Assuming inputs for R1\n"
 	
-	MaskPrimers.py ${args_1} -s ${reads} ${R1_primers} --log MP_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${R1}_MP.log
+	MaskPrimers.py ${args_1} -s ${reads} ${R1_primers} --log MP_${name}.log  --nproc ${nproc} ${failed} ${fasta} 2>&1 | tee -a out_${name}_MP.log
 	"""
 }
 
@@ -1436,7 +1472,6 @@ input:
  set val(name), file(log_file) from g_83_logFile1_g72_0
  set val(name), file(log_file) from g20_15_logFile1_g72_0
  set val(name), file(log_file) from g21_16_logFile4_g72_0
- set val(name), file(log_file) from g9_11_logFile3_g72_0
  set val(name), file(log_file) from g85_15_logFile1_g72_0
  set val(name), file(log_file) from g53_9_logFile1_g72_0
  set val(name), file(log_file) from g15_9_logFile1_g72_0
